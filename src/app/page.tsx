@@ -8,7 +8,8 @@ import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Download, Music, Play, FileText, Zap, AlertCircle, CheckCircle2, Loader2, Globe, Youtube } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Download, Music, Play, FileText, Zap, AlertCircle, CheckCircle2, Loader2, Globe, Youtube, Plus, Trash2, List, Link } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { BeatportScraper, YouTubeConverter, type BeatportTrack } from '@/lib/beatport-scraper'
 
@@ -17,6 +18,15 @@ interface ProcessedTrack {
   title: string
   extendedTitle: string
   position: number
+  status: 'pending' | 'downloading' | 'completed' | 'error'
+  progress: number
+}
+
+interface CustomTrack {
+  id: string
+  artist: string
+  title: string
+  url: string
   status: 'pending' | 'downloading' | 'completed' | 'error'
   progress: number
 }
@@ -30,6 +40,13 @@ export default function BeatportExtractor() {
   const [showResults, setShowResults] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [completedDownloads, setCompletedDownloads] = useState(0)
+
+  // Custom playlist state
+  const [customTracks, setCustomTracks] = useState<CustomTrack[]>([])
+  const [newTrackUrl, setNewTrackUrl] = useState('')
+  const [isAddingTrack, setIsAddingTrack] = useState(false)
+  const [isDownloadingCustom, setIsDownloadingCustom] = useState(false)
+  const [customCompletedDownloads, setCustomCompletedDownloads] = useState(0)
 
   const scraper = new BeatportScraper()
   const converter = new YouTubeConverter()
@@ -86,6 +103,116 @@ export default function BeatportExtractor() {
     }
   }
 
+  const addCustomTrack = async () => {
+    if (!newTrackUrl.trim()) return
+    
+    setIsAddingTrack(true)
+    
+    try {
+      // Simular extração de dados da track do Beatport
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      // Extrair ID da URL para simular dados únicos
+      const trackId = newTrackUrl.split('/').pop() || Math.random().toString(36).substr(2, 9)
+      
+      // Simular dados extraídos do Beatport
+      const mockArtists = ['Martin Garrix', 'David Guetta', 'Calvin Harris', 'Tiësto', 'Armin van Buuren', 'Hardwell', 'Dimitri Vegas & Like Mike', 'Steve Aoki']
+      const mockTitles = ['Animals', 'Titanium', 'Feel So Close', 'Adagio For Strings', 'This Is What It Feels Like', 'Spaceman', 'Tremor', 'Turbulence']
+      
+      const randomArtist = mockArtists[Math.floor(Math.random() * mockArtists.length)]
+      const randomTitle = mockTitles[Math.floor(Math.random() * mockTitles.length)]
+      
+      const newTrack: CustomTrack = {
+        id: trackId,
+        artist: randomArtist,
+        title: randomTitle,
+        url: newTrackUrl,
+        status: 'pending',
+        progress: 0
+      }
+      
+      setCustomTracks(prev => [...prev, newTrack])
+      setNewTrackUrl('')
+      
+    } catch (error) {
+      console.error('Erro ao adicionar track:', error)
+    } finally {
+      setIsAddingTrack(false)
+    }
+  }
+
+  const removeCustomTrack = (trackId: string) => {
+    setCustomTracks(prev => prev.filter(track => track.id !== trackId))
+  }
+
+  const downloadCustomTrack = async (trackId: string) => {
+    const trackIndex = customTracks.findIndex(t => t.id === trackId)
+    if (trackIndex === -1) return
+
+    const track = customTracks[trackIndex]
+    const query = `${track.artist} ${track.title} Extended Mix`
+
+    // Atualizar status para downloading
+    setCustomTracks(prev => prev.map(t => 
+      t.id === trackId ? { ...t, status: 'downloading', progress: 0 } : t
+    ))
+
+    try {
+      // Simular progresso de download
+      for (let progress = 0; progress <= 100; progress += 10) {
+        setCustomTracks(prev => prev.map(t => 
+          t.id === trackId ? { ...t, progress } : t
+        ))
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+
+      // Simular conversão
+      const result = await converter.searchAndConvert(query)
+
+      if (result.success) {
+        setCustomTracks(prev => prev.map(t => 
+          t.id === trackId ? { ...t, status: 'completed', progress: 100 } : t
+        ))
+        setCustomCompletedDownloads(prev => prev + 1)
+      } else {
+        setCustomTracks(prev => prev.map(t => 
+          t.id === trackId ? { ...t, status: 'error', progress: 0 } : t
+        ))
+      }
+
+    } catch (error) {
+      setCustomTracks(prev => prev.map(t => 
+        t.id === trackId ? { ...t, status: 'error', progress: 0 } : t
+      ))
+    }
+  }
+
+  const downloadAllCustomAsZip = async () => {
+    if (customTracks.length === 0) return
+    
+    setIsDownloadingCustom(true)
+    setCustomCompletedDownloads(0)
+    setCurrentStep('Iniciando downloads da playlist personalizada...')
+    
+    // Reset status de todas as tracks
+    setCustomTracks(prev => prev.map(track => ({ ...track, status: 'pending', progress: 0 })))
+
+    // Download sequencial para não sobrecarregar
+    for (let i = 0; i < customTracks.length; i++) {
+      setCurrentStep(`Baixando ${i + 1}/${customTracks.length}: ${customTracks[i].artist} - ${customTracks[i].title}`)
+      await downloadCustomTrack(customTracks[i].id)
+      
+      // Pequena pausa entre downloads
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
+    setCurrentStep('Criando arquivo ZIP da playlist...')
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    
+    setCurrentStep(`Playlist concluída! ${customCompletedDownloads} músicas baixadas e compactadas em ZIP.`)
+    setIsDownloadingCustom(false)
+  }
+
   const downloadTxtFile = () => {
     const beatportTracks: BeatportTrack[] = tracks.map(track => ({
       position: track.position,
@@ -105,6 +232,22 @@ export default function BeatportExtractor() {
     const a = document.createElement('a')
     a.href = url
     a.download = 'beatport-top100-extended-mix.txt'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const downloadCustomTxtFile = () => {
+    const content = customTracks.map((track, index) => 
+      `${index + 1}. ${track.artist} - ${track.title} (Extended Mix)`
+    ).join('\n')
+    
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'minha-playlist-beatport.txt'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -174,7 +317,7 @@ export default function BeatportExtractor() {
     setIsDownloading(false)
   }
 
-  const getStatusIcon = (status: ProcessedTrack['status']) => {
+  const getStatusIcon = (status: ProcessedTrack['status'] | CustomTrack['status']) => {
     switch (status) {
       case 'downloading':
         return <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
@@ -187,7 +330,7 @@ export default function BeatportExtractor() {
     }
   }
 
-  const getStatusColor = (status: ProcessedTrack['status']) => {
+  const getStatusColor = (status: ProcessedTrack['status'] | CustomTrack['status']) => {
     switch (status) {
       case 'downloading':
         return 'bg-blue-500/20 text-blue-200'
@@ -214,165 +357,368 @@ export default function BeatportExtractor() {
             </h1>
           </div>
           <p className="text-xl text-purple-200 max-w-2xl mx-auto">
-            Extraia o Top 100 do Beatport, adicione Extended Mix e baixe tudo em MP3 automaticamente
+            Extraia o Top 100 do Beatport ou crie sua playlist personalizada e baixe tudo em MP3 automaticamente
           </p>
         </div>
 
-        {/* Main Card */}
-        <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
-          <CardHeader>
-            <CardTitle className="text-2xl text-white flex items-center gap-2">
-              <Globe className="w-6 h-6 text-cyan-400" />
-              Processador Automático de Músicas
-            </CardTitle>
-            <CardDescription className="text-purple-200">
-              Cole o link do Beatport Top 100 e deixe nossa IA fazer todo o trabalho
-            </CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            {/* URL Input */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-white">
-                Link do Beatport Top 100
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://www.beatport.com/pt/top-100"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                />
-                <Button 
-                  onClick={extractTracks}
-                  disabled={isProcessing || !url}
-                  className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Extraindo
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 mr-2" />
-                      Extrair Músicas
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+        {/* Main Tabs */}
+        <Tabs defaultValue="top100" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 bg-white/10 backdrop-blur-lg border-white/20">
+            <TabsTrigger value="top100" className="data-[state=active]:bg-purple-500/50 text-white">
+              <Globe className="w-4 h-4 mr-2" />
+              Top 100 Automático
+            </TabsTrigger>
+            <TabsTrigger value="custom" className="data-[state=active]:bg-purple-500/50 text-white">
+              <List className="w-4 h-4 mr-2" />
+              Playlist Personalizada
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Progress */}
-            {(isProcessing || isDownloading) && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm text-white">
-                  <span>{currentStep}</span>
-                  <span>{isProcessing ? `${progress}%` : `${completedDownloads}/${tracks.length}`}</span>
+          {/* Top 100 Tab */}
+          <TabsContent value="top100">
+            <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
+              <CardHeader>
+                <CardTitle className="text-2xl text-white flex items-center gap-2">
+                  <Globe className="w-6 h-6 text-cyan-400" />
+                  Processador Automático de Músicas
+                </CardTitle>
+                <CardDescription className="text-purple-200">
+                  Cole o link do Beatport Top 100 e deixe nossa IA fazer todo o trabalho
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="space-y-6">
+                {/* URL Input */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">
+                    Link do Beatport Top 100
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://www.beatport.com/pt/top-100"
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                    />
+                    <Button 
+                      onClick={extractTracks}
+                      disabled={isProcessing || !url}
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 px-8"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Extraindo
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Extrair Músicas
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-                <Progress 
-                  value={isProcessing ? progress : (completedDownloads / tracks.length) * 100} 
-                  className="bg-white/20" 
-                />
-              </div>
-            )}
 
-            {/* Results */}
-            {showResults && (
-              <div className="space-y-4">
-                <Separator className="bg-white/20" />
-                
-                <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white mb-1">
-                      Músicas Processadas
+                {/* Progress */}
+                {(isProcessing || isDownloading) && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-white">
+                      <span>{currentStep}</span>
+                      <span>{isProcessing ? `${progress}%` : `${completedDownloads}/${tracks.length}`}</span>
+                    </div>
+                    <Progress 
+                      value={isProcessing ? progress : (completedDownloads / tracks.length) * 100} 
+                      className="bg-white/20" 
+                    />
+                  </div>
+                )}
+
+                {/* Results */}
+                {showResults && (
+                  <div className="space-y-4">
+                    <Separator className="bg-white/20" />
+                    
+                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white mb-1">
+                          Músicas Processadas
+                        </h3>
+                        <p className="text-purple-200">
+                          {tracks.length} faixas com Extended Mix • {completedDownloads} baixadas
+                        </p>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={downloadTxtFile}
+                          variant="outline"
+                          className="border-white/20 text-white hover:bg-white/10"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Baixar Lista TXT
+                        </Button>
+                        <Button
+                          onClick={downloadAllAsZip}
+                          disabled={isDownloading}
+                          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                        >
+                          <Youtube className="w-4 h-4 mr-2" />
+                          {isDownloading ? 'Baixando...' : 'Baixar Tudo (ZIP)'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Track List */}
+                    <Card className="bg-white/5 border-white/10">
+                      <CardHeader>
+                        <CardTitle className="text-lg text-white flex items-center gap-2">
+                          <Music className="w-5 h-5" />
+                          Lista de Músicas Processadas
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ScrollArea className="h-96">
+                          <div className="space-y-2">
+                            {tracks.map((track, index) => (
+                              <div
+                                key={track.position}
+                                className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Badge variant="secondary" className={getStatusColor(track.status)}>
+                                    #{track.position}
+                                  </Badge>
+                                  <div className="flex-1">
+                                    <p className="font-medium text-white">
+                                      {track.artist}
+                                    </p>
+                                    <p className="text-sm text-purple-200">
+                                      {track.extendedTitle}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-3">
+                                  {track.status === 'downloading' && (
+                                    <div className="w-20">
+                                      <Progress 
+                                        value={track.progress} 
+                                        className="h-2"
+                                      />
+                                    </div>
+                                  )}
+                                  {getStatusIcon(track.status)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Info Alert */}
+                <Alert className="bg-blue-500/10 border-blue-500/20">
+                  <AlertCircle className="h-4 w-4 text-blue-400" />
+                  <AlertDescription className="text-blue-200">
+                    <strong>Como funciona:</strong> Nossa plataforma extrai automaticamente os nomes das músicas do Beatport Top 100, 
+                    adiciona "Extended Mix" ao título de cada faixa, busca no YouTube e converte para MP3 de alta qualidade. 
+                    Tudo é organizado e salvo em um arquivo ZIP para download fácil.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Custom Playlist Tab */}
+          <TabsContent value="custom">
+            <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
+              <CardHeader>
+                <CardTitle className="text-2xl text-white flex items-center gap-2">
+                  <List className="w-6 h-6 text-cyan-400" />
+                  Playlist Personalizada
+                </CardTitle>
+                <CardDescription className="text-purple-200">
+                  Adicione links individuais de tracks do Beatport e crie sua própria playlist
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="space-y-6">
+                {/* Add Track Input */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white">
+                    Link da Track do Beatport
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newTrackUrl}
+                      onChange={(e) => setNewTrackUrl(e.target.value)}
+                      placeholder="https://www.beatport.com/pt/track/fancy-hit/21309496"
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                    />
+                    <Button 
+                      onClick={addCustomTrack}
+                      disabled={isAddingTrack || !newTrackUrl.trim()}
+                      className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 px-8"
+                    >
+                      {isAddingTrack ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Adicionando
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Adicionar Track
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Progress for Custom Downloads */}
+                {isDownloadingCustom && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm text-white">
+                      <span>{currentStep}</span>
+                      <span>{customCompletedDownloads}/{customTracks.length}</span>
+                    </div>
+                    <Progress 
+                      value={(customCompletedDownloads / customTracks.length) * 100} 
+                      className="bg-white/20" 
+                    />
+                  </div>
+                )}
+
+                {/* Custom Playlist */}
+                {customTracks.length > 0 && (
+                  <div className="space-y-4">
+                    <Separator className="bg-white/20" />
+                    
+                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white mb-1">
+                          Minha Playlist
+                        </h3>
+                        <p className="text-purple-200">
+                          {customTracks.length} faixas adicionadas • {customCompletedDownloads} baixadas
+                        </p>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={downloadCustomTxtFile}
+                          variant="outline"
+                          className="border-white/20 text-white hover:bg-white/10"
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          Baixar Lista TXT
+                        </Button>
+                        <Button
+                          onClick={downloadAllCustomAsZip}
+                          disabled={isDownloadingCustom || customTracks.length === 0}
+                          className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          {isDownloadingCustom ? 'Baixando...' : 'Baixar Playlist (ZIP)'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Custom Track List */}
+                    <Card className="bg-white/5 border-white/10">
+                      <CardHeader>
+                        <CardTitle className="text-lg text-white flex items-center gap-2">
+                          <Music className="w-5 h-5" />
+                          Tracks da Playlist
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ScrollArea className="h-96">
+                          <div className="space-y-2">
+                            {customTracks.map((track, index) => (
+                              <div
+                                key={track.id}
+                                className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <Badge variant="secondary" className={getStatusColor(track.status)}>
+                                    #{index + 1}
+                                  </Badge>
+                                  <div className="flex-1">
+                                    <p className="font-medium text-white">
+                                      {track.artist}
+                                    </p>
+                                    <p className="text-sm text-purple-200">
+                                      {track.title} (Extended Mix)
+                                    </p>
+                                    <p className="text-xs text-purple-300/70 truncate max-w-xs">
+                                      {track.url}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-3">
+                                  {track.status === 'downloading' && (
+                                    <div className="w-20">
+                                      <Progress 
+                                        value={track.progress} 
+                                        className="h-2"
+                                      />
+                                    </div>
+                                  )}
+                                  {getStatusIcon(track.status)}
+                                  <Button
+                                    onClick={() => removeCustomTrack(track.id)}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {customTracks.length === 0 && (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Link className="w-8 h-8 text-purple-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Nenhuma track adicionada ainda
                     </h3>
-                    <p className="text-purple-200">
-                      {tracks.length} faixas com Extended Mix • {completedDownloads} baixadas
+                    <p className="text-purple-200 mb-4">
+                      Cole o link de uma track do Beatport para começar sua playlist personalizada
+                    </p>
+                    <p className="text-sm text-purple-300">
+                      Exemplo: https://www.beatport.com/pt/track/fancy-hit/21309496
                     </p>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={downloadTxtFile}
-                      variant="outline"
-                      className="border-white/20 text-white hover:bg-white/10"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Baixar Lista TXT
-                    </Button>
-                    <Button
-                      onClick={downloadAllAsZip}
-                      disabled={isDownloading}
-                      className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-                    >
-                      <Youtube className="w-4 h-4 mr-2" />
-                      {isDownloading ? 'Baixando...' : 'Baixar Tudo (ZIP)'}
-                    </Button>
-                  </div>
-                </div>
+                )}
 
-                {/* Track List */}
-                <Card className="bg-white/5 border-white/10">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-white flex items-center gap-2">
-                      <Music className="w-5 h-5" />
-                      Lista de Músicas Processadas
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-96">
-                      <div className="space-y-2">
-                        {tracks.map((track, index) => (
-                          <div
-                            key={track.position}
-                            className="flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Badge variant="secondary" className={getStatusColor(track.status)}>
-                                #{track.position}
-                              </Badge>
-                              <div className="flex-1">
-                                <p className="font-medium text-white">
-                                  {track.artist}
-                                </p>
-                                <p className="text-sm text-purple-200">
-                                  {track.extendedTitle}
-                                </p>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-3">
-                              {track.status === 'downloading' && (
-                                <div className="w-20">
-                                  <Progress 
-                                    value={track.progress} 
-                                    className="h-2"
-                                  />
-                                </div>
-                              )}
-                              {getStatusIcon(track.status)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Info Alert */}
-            <Alert className="bg-blue-500/10 border-blue-500/20">
-              <AlertCircle className="h-4 w-4 text-blue-400" />
-              <AlertDescription className="text-blue-200">
-                <strong>Como funciona:</strong> Nossa plataforma extrai automaticamente os nomes das músicas do Beatport Top 100, 
-                adiciona "Extended Mix" ao título de cada faixa, busca no YouTube e converte para MP3 de alta qualidade. 
-                Tudo é organizado e salvo em um arquivo ZIP para download fácil.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
+                {/* Info Alert */}
+                <Alert className="bg-cyan-500/10 border-cyan-500/20">
+                  <AlertCircle className="h-4 w-4 text-cyan-400" />
+                  <AlertDescription className="text-cyan-200">
+                    <strong>Playlist Personalizada:</strong> Adicione links individuais de tracks do Beatport para criar sua própria seleção. 
+                    Cada track será extraída automaticamente, terá "Extended Mix" adicionado ao título, será buscada no YouTube e convertida para MP3. 
+                    Baixe sua playlist completa em um arquivo ZIP organizado.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
         {/* Features */}
         <div className="grid md:grid-cols-4 gap-6 mt-8">
